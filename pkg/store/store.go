@@ -38,12 +38,12 @@ type Store interface {
 
 // NewStore permite instanciar diferentes tipos de Store
 // dependiendo del motor solicitado (sólo se soporta "bbolt").
-func NewStore(engine, path string) (Store, error) {
+func NewStore(engine, path string, masterKey []byte) (Store, error) {
 	switch engine {
 	case "bbolt":
-		return NewBboltStore(path)
+		return NewBboltStore(path, masterKey)
 	default:
-		return nil, fmt.Errorf("motor de almacenamiento desconocido: %s", engine)
+		return nil, fmt.Errorf("motor no soportado: %s", engine)
 	}
 }
 

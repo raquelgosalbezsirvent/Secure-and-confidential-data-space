@@ -21,27 +21,27 @@ import (
 )
 
 func main() {
-
-	// Creamos un logger con prefijo 'main' para identificar
-	// los mensajes en la consola.
 	log := log.New(os.Stdout, "[main] ", log.LstdFlags)
 
-	// Inicia servidor en goroutine.
+	log.Println("Desbloqueando clave maestra...")
+	masterKey, err := server.LoadMasterKey()
+	if err != nil {
+		log.Fatalf("Error cargando clave maestra: %v\n", err)
+	}
+
 	log.Println("Iniciando servidor...")
 	go func() {
-		if err := server.Run(); err != nil {
+		if err := server.Run(masterKey); err != nil {
 			log.Fatalf("Error del servidor: %v\n", err)
 		}
 	}()
 
-	// Esperamos un tiempo prudencial a que arranque el servidor.
 	const totalSteps = 20
 	for i := 1; i <= totalSteps; i++ {
 		ui.PrintProgressBar(i, totalSteps, 30)
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	// Inicia cliente.
 	log.Println("Iniciando cliente...")
 	client.Run()
 }

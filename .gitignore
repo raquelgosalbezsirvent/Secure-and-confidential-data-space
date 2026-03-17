@@ -47,3 +47,6 @@ data/
 *.pem
 *.key
 *.crt
+
+# Clave maestra
+secrets/

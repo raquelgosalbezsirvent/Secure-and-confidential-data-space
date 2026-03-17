@@ -4,6 +4,8 @@ package client
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -28,12 +30,33 @@ type client struct {
 // Run es la única función exportada de este paquete.
 // Crea un client interno y ejecuta el bucle principal.
 func Run() {
+	// RGS
+	logg := log.New(os.Stdout, "[cli] ", log.LstdFlags)
+
+	certificado, err := os.ReadFile("certs/server.pem")
+	if err != nil {
+		logg.Fatalf("No se pudo leer el certificado del servidor: %v", err)
+	}
+
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(certificado) {
+		logg.Fatal("No se pudo cargar el certificado en el pool de confianza")
+	}
+
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			RootCAs: roots,
+		},
+	}
+	// RGS
+
 	// Creamos un logger con prefijo 'cli' para identificar
 	// los mensajes en la consola.
 	c := &client{
-		log: log.New(os.Stdout, "[cli] ", log.LstdFlags),
+		log: logg,
 		httpClient: &http.Client{
-			Timeout: 5 * time.Second,
+			Timeout:   5 * time.Second,
+			Transport: transport,
 		},
 	}
 	c.runLoop()
@@ -273,9 +296,9 @@ func (c *client) sendRequest(req api.Request) api.Response {
 		return api.Response{Success: false, Message: "Error interno del cliente"}
 	}
 
-	httpReq, err := http.NewRequest(http.MethodPost, "http://localhost:8080/api", bytes.NewBuffer(jsonData))
+	httpReq, err := http.NewRequest(http.MethodPost, "https://localhost:8080/api", bytes.NewBuffer(jsonData)) // RGS
 	if err != nil {
-		c.log.Println("No se ha podido construir la petición HTTP:", err)
+		c.log.Println("No se ha podido construir la petición HTTPS:", err) // RGS
 		return api.Response{Success: false, Message: "Error interno del cliente"}
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
