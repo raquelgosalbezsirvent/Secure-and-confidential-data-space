@@ -32,16 +32,16 @@ import (
 type server struct {
 	db      store.Store // base de datos
 	log     *log.Logger // logger para mensajes de error e información
-	limiter *authLimiter
+	limiter *authLimiter // RGS
 }
 
-// Run inicia la base de datos y arranca el servidor HTTP.
-func Run(masterKey []byte) error {
+// Run inicia la base de datos y arranca el servidor HTTP
+func Run(masterKey []byte) error { // RGS
 	if err := os.MkdirAll("data", 0755); err != nil {
 		return fmt.Errorf("error creando la carpeta 'data': %w", err)
 	}
 
-	db, err := store.NewStore("bbolt", "data/server.db", masterKey)
+	db, err := store.NewStore("bbolt", "data/server.db", masterKey) // RGS
 	if err != nil {
 		return fmt.Errorf("error abriendo base de datos: %v", err)
 	}
@@ -49,7 +49,7 @@ func Run(masterKey []byte) error {
 	srv := &server{
 		db:      db,
 		log:     log.New(os.Stdout, "[srv] ", log.LstdFlags),
-		limiter: newAuthLimiter(),
+		limiter: newAuthLimiter(), // RGS
 	}
 	defer srv.db.Close()
 
@@ -62,8 +62,10 @@ func Run(masterKey []byte) error {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	return httpSrv.ListenAndServeTLS("certs/server.pem", "certs/server.key")
+	return httpSrv.ListenAndServeTLS("certs/server.pem", "certs/server.key") // RGS
 }
+
+
 
 // RGS
 type passwordParams struct {
@@ -175,57 +177,6 @@ func validatePassword(password string) error {
 	return nil
 }
 
-//RGS
-
-// apiHandler decodifica la solicitud JSON, la despacha
-// a la función correspondiente y devuelve la respuesta JSON.
-func (s *server) apiHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Limitamos el tamaño del body para evitar sorpresas.
-	// (No es una medida de seguridad "de verdad"; sólo robustez.)
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB
-
-	// Decodificamos la solicitud en una estructura api.Request
-	var req api.Request
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil {
-		http.Error(w, "Error en el formato JSON", http.StatusBadRequest)
-		return
-	}
-	// Evitamos que se envíen múltiples objetos JSON concatenados.
-	if err := dec.Decode(&struct{}{}); err != io.EOF {
-		http.Error(w, "Error en el formato JSON", http.StatusBadRequest)
-		return
-	}
-
-	// Despacho según la acción solicitada
-	var res api.Response
-	switch req.Action {
-	case api.ActionRegister:
-		res = s.registerUser(req)
-	case api.ActionLogin:
-		res = s.loginUser(req)
-	case api.ActionFetchData:
-		res = s.fetchData(req)
-	case api.ActionUpdateData:
-		res = s.updateData(req)
-	case api.ActionLogout:
-		res = s.logoutUser(req)
-	default:
-		res = api.Response{Success: false, Message: "Acción desconocida"}
-	}
-
-	// Enviamos la respuesta en formato JSON
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(res)
-}
-
-// generateToken crea un token aleatorio criptográficamente seguro.
 func (s *server) generateToken() string {
 	b := make([]byte, 32)
 	_, err := rand.Read(b)
@@ -240,12 +191,12 @@ func (s *server) generateToken() string {
 // - Guardamos la contraseña en el namespace 'auth'
 // - Creamos entrada vacía en 'userdata' para el usuario
 func (s *server) registerUser(req api.Request) api.Response {
-	req.Username = normalizeUsername(req.Username)
+	req.Username = normalizeUsername(req.Username) // RGS
 
-	if err := validateUsername(req.Username); err != nil {
+	if err := validateUsername(req.Username); err != nil { // RGS
 		return api.Response{Success: false, Message: err.Error()}
 	}
-	if err := validatePassword(req.Password); err != nil {
+	if err := validatePassword(req.Password); err != nil { // RGS
 		return api.Response{Success: false, Message: err.Error()}
 	}
 
@@ -258,19 +209,19 @@ func (s *server) registerUser(req api.Request) api.Response {
 		return api.Response{Success: false, Message: "El usuario ya existe"}
 	}
 
-	encodedHash, err := hashPasswordArgon2id(req.Password, argonParams)
+	encodedHash, err := hashPasswordArgon2id(req.Password, argonParams) // RGS
 	if err != nil {
 		s.log.Printf("Generando hash Argon2id: %v", err)
 		return api.Response{Success: false, Message: "Error interno del servidor"}
 	}
 
-	if err := s.db.Put("auth", []byte(req.Username), []byte(encodedHash)); err != nil {
+	if err := s.db.Put("auth", []byte(req.Username), []byte(encodedHash)); err != nil { // RGS
 		s.log.Printf("Guardando credenciales: %v", err)
 		return api.Response{Success: false, Message: "Error interno del servidor"}
 	}
 
 	if err := s.db.Put("userdata", []byte(req.Username), []byte("")); err != nil {
-		_ = s.db.Delete("auth", []byte(req.Username))
+		_ = s.db.Delete("auth", []byte(req.Username)) // RGS
 		s.log.Printf("Inicializando datos de usuario: %v", err)
 		return api.Response{Success: false, Message: "Error interno del servidor"}
 	}
@@ -278,7 +229,6 @@ func (s *server) registerUser(req api.Request) api.Response {
 	return api.Response{Success: true, Message: "Usuario registrado correctamente"}
 }
 
-// loginUser valida credenciales en el namespace 'auth' y genera un token en 'sessions'.
 func (s *server) loginUser(req api.Request) api.Response {
 	req.Username = normalizeUsername(req.Username)
 
@@ -352,106 +302,6 @@ func (s *server) loginUser(req api.Request) api.Response {
 	}
 }
 
-// fetchData verifica el token y retorna el contenido del namespace 'userdata'.
-func (s *server) fetchData(req api.Request) api.Response {
-	req.Username = normalizeUsername(req.Username)
-
-	if req.Username == "" || req.Token == "" {
-		return api.Response{Success: false, Message: "Faltan credenciales"}
-	}
-	if !s.isTokenValid(req.Username, req.Token) {
-		return api.Response{Success: false, Message: "Token inválido o sesión expirada"}
-	}
-
-	rawData, err := s.db.Get("userdata", []byte(req.Username))
-	if err != nil {
-		return api.Response{Success: false, Message: "Error al obtener datos del usuario"}
-	}
-
-	return api.Response{
-		Success: true,
-		Message: "Datos privados de " + req.Username,
-		Data:    string(rawData),
-	}
-}
-
-// updateData cambia el contenido de 'userdata' (los "datos" del usuario)
-// después de validar el token.
-func (s *server) updateData(req api.Request) api.Response {
-	req.Username = normalizeUsername(req.Username)
-
-	if req.Username == "" || req.Token == "" {
-		return api.Response{Success: false, Message: "Faltan credenciales"}
-	}
-	if !s.isTokenValid(req.Username, req.Token) {
-		return api.Response{Success: false, Message: "Token inválido o sesión expirada"}
-	}
-
-	if err := s.db.Put("userdata", []byte(req.Username), []byte(req.Data)); err != nil {
-		return api.Response{Success: false, Message: "Error al actualizar datos del usuario"}
-	}
-
-	return api.Response{Success: true, Message: "Datos de usuario actualizados"}
-}
-
-// logoutUser borra la sesión
-func (s *server) logoutUser(req api.Request) api.Response {
-	req.Username = normalizeUsername(req.Username)
-
-	if req.Username == "" || req.Token == "" {
-		return api.Response{Success: false, Message: "Faltan credenciales"}
-	}
-	if !s.isTokenValid(req.Username, req.Token) {
-		return api.Response{Success: false, Message: "Token inválido o sesión expirada"}
-	}
-
-	if err := s.db.Delete("sessions", []byte(req.Username)); err != nil {
-		return api.Response{Success: false, Message: "Error al cerrar sesión"}
-	}
-
-	return api.Response{Success: true, Message: "Sesión cerrada correctamente"}
-}
-
-// userExists comprueba si existe un usuario con la clave 'username'
-// en 'auth'. Si no se encuentra, retorna false.
-func (s *server) userExists(username string) (bool, error) {
-	_, err := s.db.Get("auth", []byte(username))
-	if err != nil {
-		// Si no existe namespace o la clave, no es un error "real".
-		if errors.Is(err, store.ErrNamespaceNotFound) || errors.Is(err, store.ErrKeyNotFound) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
-}
-
-// isTokenValid comprueba que el token almacenado en 'sessions'
-// coincida con el token proporcionado.
-func (s *server) isTokenValid(username, token string) bool {
-	username = normalizeUsername(username)
-
-	rawSession, err := s.db.Get("sessions", []byte(username))
-	if err != nil {
-		return false
-	}
-
-	var session sessionData
-	if err := json.Unmarshal(rawSession, &session); err != nil {
-		s.log.Printf("Sesión corrupta para %s: %v", username, err)
-		_ = s.db.Delete("sessions", []byte(username))
-		return false
-	}
-
-	if time.Now().UTC().After(session.ExpiresAt) {
-		_ = s.db.Delete("sessions", []byte(username))
-		return false
-	}
-
-	return subtle.ConstantTimeCompare([]byte(session.Token), []byte(token)) == 1
-}
-
-// RGS
 func generateRandomBytes(n uint32) ([]byte, error) {
 	b := make([]byte, n)
 	_, err := rand.Read(b)
@@ -544,6 +394,7 @@ func verifyPasswordArgon2id(password, encodedHash string) (bool, bool, error) {
 
 	return match, needsRehash, nil
 }
+
 
 func LoadMasterKey() ([]byte, error) {
 	metaBytes, err := os.ReadFile("secrets/db.key.meta")
@@ -663,4 +514,155 @@ func promptMasterPassword() (string, error) {
 	return string(pwBytes), nil
 }
 
+// isTokenValid comprueba que el token almacenado en 'sessions'
+// coincida con el token proporcionado.
+func (s *server) isTokenValid(username, token string) bool {
+	username = normalizeUsername(username)
+
+	rawSession, err := s.db.Get("sessions", []byte(username))
+	if err != nil {
+		return false
+	}
+
+	var session sessionData
+	if err := json.Unmarshal(rawSession, &session); err != nil {
+		s.log.Printf("Sesión corrupta para %s: %v", username, err)
+		_ = s.db.Delete("sessions", []byte(username))
+		return false
+	}
+
+	if time.Now().UTC().After(session.ExpiresAt) {
+		_ = s.db.Delete("sessions", []byte(username))
+		return false
+	}
+
+	return subtle.ConstantTimeCompare([]byte(session.Token), []byte(token)) == 1
+}
+
 //RGS
+
+
+
+
+
+// apiHandler decodifica la solicitud JSON, la despacha
+// a la función correspondiente y devuelve la respuesta JSON.
+func (s *server) apiHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Limitamos el tamaño del body para evitar sorpresas.
+	// (No es una medida de seguridad "de verdad"; sólo robustez.)
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB
+
+	// Decodificamos la solicitud en una estructura api.Request
+	var req api.Request
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		http.Error(w, "Error en el formato JSON", http.StatusBadRequest)
+		return
+	}
+	// Evitamos que se envíen múltiples objetos JSON concatenados.
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		http.Error(w, "Error en el formato JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Despacho según la acción solicitada
+	var res api.Response
+	switch req.Action {
+	case api.ActionRegister:
+		res = s.registerUser(req)
+	case api.ActionLogin:
+		res = s.loginUser(req)
+	case api.ActionFetchData:
+		res = s.fetchData(req)
+	case api.ActionUpdateData:
+		res = s.updateData(req)
+	case api.ActionLogout:
+		res = s.logoutUser(req)
+	default:
+		res = api.Response{Success: false, Message: "Acción desconocida"}
+	}
+
+	// Enviamos la respuesta en formato JSON
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(res)
+}
+
+// fetchData verifica el token y retorna el contenido del namespace 'userdata'.
+func (s *server) fetchData(req api.Request) api.Response {
+	req.Username = normalizeUsername(req.Username)
+
+	if req.Username == "" || req.Token == "" {
+		return api.Response{Success: false, Message: "Faltan credenciales"}
+	}
+	if !s.isTokenValid(req.Username, req.Token) {
+		return api.Response{Success: false, Message: "Token inválido o sesión expirada"}
+	}
+
+	rawData, err := s.db.Get("userdata", []byte(req.Username))
+	if err != nil {
+		return api.Response{Success: false, Message: "Error al obtener datos del usuario"}
+	}
+
+	return api.Response{
+		Success: true,
+		Message: "Datos privados de " + req.Username,
+		Data:    string(rawData),
+	}
+}
+
+// updateData cambia el contenido de 'userdata' (los "datos" del usuario)
+// después de validar el token.
+func (s *server) updateData(req api.Request) api.Response {
+	req.Username = normalizeUsername(req.Username)
+
+	if req.Username == "" || req.Token == "" {
+		return api.Response{Success: false, Message: "Faltan credenciales"}
+	}
+	if !s.isTokenValid(req.Username, req.Token) {
+		return api.Response{Success: false, Message: "Token inválido o sesión expirada"}
+	}
+
+	if err := s.db.Put("userdata", []byte(req.Username), []byte(req.Data)); err != nil {
+		return api.Response{Success: false, Message: "Error al actualizar datos del usuario"}
+	}
+
+	return api.Response{Success: true, Message: "Datos de usuario actualizados"}
+}
+
+// logoutUser borra la sesión
+func (s *server) logoutUser(req api.Request) api.Response {
+	req.Username = normalizeUsername(req.Username)
+
+	if req.Username == "" || req.Token == "" {
+		return api.Response{Success: false, Message: "Faltan credenciales"}
+	}
+	if !s.isTokenValid(req.Username, req.Token) {
+		return api.Response{Success: false, Message: "Token inválido o sesión expirada"}
+	}
+
+	if err := s.db.Delete("sessions", []byte(req.Username)); err != nil {
+		return api.Response{Success: false, Message: "Error al cerrar sesión"}
+	}
+
+	return api.Response{Success: true, Message: "Sesión cerrada correctamente"}
+}
+
+// userExists comprueba si existe un usuario con la clave 'username'
+// en 'auth'. Si no se encuentra, retorna false.
+func (s *server) userExists(username string) (bool, error) {
+	_, err := s.db.Get("auth", []byte(username))
+	if err != nil {
+		// Si no existe namespace o la clave, no es un error "real".
+		if errors.Is(err, store.ErrNamespaceNotFound) || errors.Is(err, store.ErrKeyNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}

@@ -23,15 +23,17 @@ import (
 func main() {
 	log := log.New(os.Stdout, "[main] ", log.LstdFlags)
 
+	// RGS
 	log.Println("Desbloqueando clave maestra...")
 	masterKey, err := server.LoadMasterKey()
 	if err != nil {
 		log.Fatalf("Error cargando clave maestra: %v\n", err)
 	}
+	// RGS
 
 	log.Println("Iniciando servidor...")
 	go func() {
-		if err := server.Run(masterKey); err != nil {
+		if err := server.Run(masterKey); err != nil { // RGS
 			log.Fatalf("Error del servidor: %v\n", err)
 		}
 	}()

@@ -38,7 +38,7 @@ type Store interface {
 
 // NewStore permite instanciar diferentes tipos de Store
 // dependiendo del motor solicitado (sólo se soporta "bbolt").
-func NewStore(engine, path string, masterKey []byte) (Store, error) {
+func NewStore(engine, path string, masterKey []byte) (Store, error) { // RGS
 	switch engine {
 	case "bbolt":
 		return NewBboltStore(path, masterKey)

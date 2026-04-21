@@ -48,7 +48,6 @@ func Run() {
 			RootCAs: roots,
 		},
 	}
-	// RGS
 
 	// Creamos un logger con prefijo 'cli' para identificar
 	// los mensajes en la consola.
@@ -60,6 +59,7 @@ func Run() {
 		},
 	}
 	c.runLoop()
+	// RGS
 }
 
 // runLoop maneja la lógica del menú principal.
